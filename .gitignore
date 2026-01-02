@@ -1,0 +1,7 @@
+.dev
+backend/__pycache__
+chroma-data/
+chroma-data/*
+documents/*
+main.py
+.env
