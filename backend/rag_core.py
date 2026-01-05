@@ -7,21 +7,17 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 
-# Cargar variables de entorno (.env)
 load_dotenv()
 
-# Configuración de ChromaDB
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", 8000))
 COLLECTION_NAME = "document_collection"
-
 
 def get_embeddings() -> HuggingFaceEmbeddings:
     """Retorna el modelo de embeddings de HuggingFace."""
     return HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-mpnet-base-v2"
     )
-
 
 def get_vectorstore() -> Chroma:
     """Retorna la conexión al cliente de ChromaDB."""
@@ -31,7 +27,6 @@ def get_vectorstore() -> Chroma:
         host=CHROMA_HOST,
         port=CHROMA_PORT,
     )
-
 
 def get_llm():
     """Retorna el modelo de lenguaje (Gemini)."""
