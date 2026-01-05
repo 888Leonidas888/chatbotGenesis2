@@ -1,6 +1,6 @@
 import os
 from typing import Dict, Any, AsyncGenerator
-from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_community.document_loaders import PyPDFDirectoryLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -28,7 +28,6 @@ class IngestionService:
         batch_size: Cantidad de páginas a procesar en memoria antes de enviar a la BD.
         """
         if not os.path.exists(self.directory_path):
-            # Intentar crear el directorio si no existe, o avisar
             try:
                 os.makedirs(self.directory_path)
                 print(
@@ -41,27 +40,33 @@ class IngestionService:
 
         print(f"Iniciando escaneo recursivo en '{self.directory_path}'...")
 
-        # glob="**/*.pdf" permite buscar en subcarpetas (anidado)
         loader = PyPDFDirectoryLoader(self.directory_path, glob="**/*.pdf")
 
         docs_buffer = []
         total_chunks = 0
 
-        # lazy_load() devuelve un generador, cargando uno a uno los archivos/páginas
         for doc in loader.lazy_load():
             docs_buffer.append(doc)
 
-            # Si el buffer alcanza el tamaño del lote, procesamos y liberamos memoria
             if len(docs_buffer) >= batch_size:
                 total_chunks += self._process_batch(docs_buffer)
                 docs_buffer = []
 
-        # Procesar los restantes en el buffer
         if docs_buffer:
             total_chunks += self._process_batch(docs_buffer)
 
         print(
             f"Ingesta finalizada. Total de fragmentos indexados: {total_chunks}")
+
+    def ingest_one_pdf(self, file_path: str):
+        loader = PyPDFLoader(file_path)
+        docs = loader.load()
+
+        if docs:
+            splits = self.text_splitter.split_documents(docs)
+            self._process_batch(splits)
+        else:
+            print("No se encontraron documentos para procesar.")
 
     def _process_batch(self, docs: list) -> int:
         splits = self.text_splitter.split_documents(docs)
@@ -80,31 +85,37 @@ class IngestionService:
         except Exception as e:
             print(f"Error al eliminar colección: {e}")
 
+    def collection_count(self):
+        self.vector_store.get()
+        return self.vector_store._collection.count()
+
 
 class ChatService:
     """
     Servicio encargado de la lógica de negocio del Chatbot RAG.
     """
 
+    SYSTEM_PROMPT = (
+        "Eres un asistente experto en programación y documentación técnica. "
+        "Utiliza el siguiente contexto recuperado para responder a la pregunta del usuario. "
+        "Si la respuesta no se encuentra en el contexto, di amablemente que no tienes esa información. "
+        "Mantén la respuesta concisa y técnica."
+        "\n\n"
+        "{context}"
+    )
+
     def __init__(self):
         self.llm = get_llm()
         self.vector_store = get_vectorstore()
-        self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 4})
+        self.retriever = self.vector_store.as_retriever(
+            search_kwargs={"k": 1}, search_type="similarity")
         self.rag_chain = self._build_chain()
 
     def _build_chain(self):
         """Construye cadena RAG moderna con LCEL (reemplaza create_retrieval_chain)"""
-        system_prompt = (
-            "Eres un asistente experto en programación y documentación técnica. "
-            "Utiliza el siguiente contexto recuperado para responder a la pregunta del usuario. "
-            "Si la respuesta no se encuentra en el contexto, di amablemente que no tienes esa información. "
-            "Mantén la respuesta concisa y técnica."
-            "\n\n"
-            "{context}"
-        )
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
+            ("system", self.SYSTEM_PROMPT),
             ("human", "{input}")
         ])
 
@@ -116,12 +127,29 @@ class ChatService:
             | StrOutputParser()
         )
 
+    def ask2(self, question: str) -> Dict[str, Any]:
+
+        context_docs = self.retriever.invoke(question)
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", self.SYSTEM_PROMPT),
+            ("human", "{input}")
+        ])
+
+        content_text = "\n\n".join([doc.page_content for doc in context_docs])
+        messages = prompt.invoke({"context": content_text, "input": question})
+
+        ia_messages = self.llm.invoke(messages)
+
+        return {'answer': ia_messages.content}
+
     def ask(self, question: str) -> Dict[str, Any]:
         """Respuesta síncrona con contexto completo"""
         result = self.rag_chain.invoke(question)
         return {"answer": result}
 
-    async def ask_stream(self, question: str) -> AsyncGenerator[Dict[str, Any], None]:
+    # -> AsyncGenerator[Dict[str, Any], None]:
+    async def ask_stream(self, question: str):
         """
         Generador asíncrono que emite fragmentos de la respuesta y las fuentes al final.
         Yields:
@@ -129,8 +157,19 @@ class ChatService:
         """
         context_docs = self.retriever.invoke(question)
 
-        # Stream de tokens de respuesta
-        async for token in self.llm.astream(question, config={"configurable": {"context": context_docs}}):
+        # 1. Formatear el contexto manualmente
+        context_text = "\n\n".join([doc.page_content for doc in context_docs])
+
+        # 2. Construir los mensajes con el prompt template
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", self.SYSTEM_PROMPT),
+            ("human", "{input}")
+        ])
+        messages = prompt_template.invoke(
+            {"context": context_text, "input": question})
+
+        # 3. Stream de tokens usando los mensajes enriquecidos
+        async for token in self.llm.astream(messages):
             if token:
                 yield {"type": "answer", "content": token.content}
 
