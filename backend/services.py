@@ -59,14 +59,18 @@ class IngestionService:
             f"Ingesta finalizada. Total de fragmentos indexados: {total_chunks}")
 
     def ingest_one_pdf(self, file_path: str):
-        loader = PyPDFLoader(file_path)
-        docs = loader.load()
 
-        if docs:
-            splits = self.text_splitter.split_documents(docs)
-            self._process_batch(splits)
+        if os.path.exists(file_path):
+            loader = PyPDFLoader(file_path)
+            docs = loader.load()
+
+            if docs:
+                splits = self.text_splitter.split_documents(docs)
+                self._process_batch(splits)
+            else:
+                print("No se encontraron documentos para procesar.")
         else:
-            print("No se encontraron documentos para procesar.")
+            print(f"El archivo {file_path} no existe.")
 
     def _process_batch(self, docs: list) -> int:
         splits = self.text_splitter.split_documents(docs)
@@ -108,7 +112,7 @@ class ChatService:
         self.llm = get_llm()
         self.vector_store = get_vectorstore()
         self.retriever = self.vector_store.as_retriever(
-            search_kwargs={"k": 1}, search_type="similarity")
+            search_kwargs={"k": 6}, search_type="mmr")
         self.rag_chain = self._build_chain()
 
     def _build_chain(self):
