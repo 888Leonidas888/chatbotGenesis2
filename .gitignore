@@ -3,5 +3,16 @@ backend/__pycache__
 chroma-data/
 chroma-data/*
 documents/*
-main.py
+# main.py
 .env
+.chainlit/
+.files/
+.vscode/
+backend/resumen.md
+chainlit.md
+frontend/src/.chaintlit/
+# frontend/src/__pycache__/
+frontend/src/chainlit.md
+*__pycache__/
+
+

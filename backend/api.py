@@ -7,32 +7,23 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from services import ChatService
+from schema.chat_request import ChatRequest
+from schema.chat_response import ChatResponse
+
 
 app = FastAPI(title="Chatbot Genesis AI",
               description="API de Chatbot con RAG usando LangChain y Gemini")
 
-# --- Modelos de Datos (Pydantic) ---
 
-
-class ChatRequest(BaseModel):
-    question: str
-
-
-class ChatResponse(BaseModel):
-    answer: str
-    sources: list[str] = []
-
-
-# --- Inicialización del Servicio ---
 chat_service = ChatService()
 
 
-@app.get("/")
+@app.get("/", tags=["Home"])
 async def root():
     return {"message": "Chatbot Genesis API está en línea"}
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/api/v1/chat", response_model=ChatResponse, tags=["Chat"])
 async def chat_endpoint(request: ChatRequest):
     try:
         # Invocar la cadena RAG
@@ -61,7 +52,7 @@ async def chat_endpoint(request: ChatRequest):
             status_code=500, detail="Ocurrió un error interno procesando tu solicitud.")
 
 
-@app.post("/chat/stream")
+@app.post("/api/v1/chat/stream", tags=["Chat"])
 async def chat_stream_endpoint(request: ChatRequest):
     """
     Endpoint de streaming. Devuelve fragmentos JSON línea por línea.
@@ -76,8 +67,3 @@ async def chat_stream_endpoint(request: ChatRequest):
             yield json.dumps({"type": "error", "content": str(e)}) + "\n"
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
