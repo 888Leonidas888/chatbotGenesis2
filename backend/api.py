@@ -3,6 +3,7 @@ api.py: Servidor FastAPI para el Chatbot RAG.
 Ejecutar con: uvicorn api:app --reload --port 8001
 """
 import json
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -34,8 +35,7 @@ async def chat_endpoint(request: ChatRequest):
         if "context" in response:
             for doc in response["context"]:
                 if "source" in doc.metadata:
-                    # Limpiamos la ruta para mostrar solo el nombre del archivo si se desea
-                    source_name = doc.metadata["source"].split("/")[-1]
+                    _, source_name = os.path.split(doc.metadata["source"])
                     sources.append(source_name)
 
         # Eliminar duplicados de fuentes

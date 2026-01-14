@@ -1,19 +1,7 @@
 import chainlit as cl
-import requests
+import os
 
-URL_BASE = "http://localhost:8001"
-
-# @cl.on_message
-# async def main(message: cl.Message):
-#     api_chat = f"{URL_BASE}/chat"
-#     response = requests.post(api_chat, json={"question": message.content})
-
-#     if response.status_code == 200:
-#         data = response.json()
-#         await cl.Message(content=data["answer"]).send()
-#     else:
-#         await cl.Message(content="Houston tenemos un problema...").send()
-
+URL_BASE = os.getenv("URL_BASE", "http://localhost:8001")
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -21,7 +9,7 @@ async def main(message: cl.Message):
     import httpx
 
     payload = {"question": message.content}
-    url = f"{URL_BASE}/chat/stream"
+    url = f"{URL_BASE}/api/v1/chat/stream"
 
     msg = cl.Message(content="")
 
@@ -33,7 +21,7 @@ async def main(message: cl.Message):
                         data = json.loads(line)
                         msg_type = data.get("type")
                         content = data.get("content", "")
-                        
+
                         if msg_type == "answer":
                             await msg.stream_token(content)
                         elif msg_type == "sources":
